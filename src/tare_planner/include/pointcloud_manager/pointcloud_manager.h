@@ -28,99 +28,108 @@
 
 namespace pointcloud_manager_ns
 {
-class PointCloudManager
-{
-public:
-  typedef pcl::PointXYZRGBNormal PCLPointType;
-  typedef pcl::PointCloud<pcl::PointXYZRGBNormal> PCLCloudType;
-  typedef typename pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr PCLCloudTypePtr;
-
-  explicit PointCloudManager(int row_num = 20, int col_num = 20, int level_num = 10, int max_cell_point_num = 100000,
-                             double cell_size = 24, double cell_height = 3, int neighbor_cell_num = 5);
-  ~PointCloudManager() = default;
-  bool UpdateRobotPosition(const geometry_msgs::Point& robot_position);
-  template <class InputPCLPointType>
-  void UpdatePointCloud(const pcl::PointCloud<InputPCLPointType>& cloud_in)
+  class PointCloudManager
   {
-    for (const auto& cloud_in_point : cloud_in.points)
+  public:
+    typedef pcl::PointXYZRGBNormal PCLPointType;
+    typedef pcl::PointCloud<pcl::PointXYZRGBNormal> PCLCloudType;
+    typedef typename pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr PCLCloudTypePtr;
+
+    explicit PointCloudManager(int row_num = 20, int col_num = 20, int level_num = 10, int max_cell_point_num = 100000,
+                               double cell_size = 24, double cell_height = 3, int neighbor_cell_num = 5);
+    ~PointCloudManager() = default;
+    bool UpdateRobotPosition(const geometry_msgs::Point &robot_position);
+
+    /**
+     * @brief 将输入点云更新到pointcloud_grid_中，并对每个单元格中的点云数据应用VoxelGrid滤波器进行下采样。
+     *
+     * @tparam InputPCLPointType
+     * @param cloud_in
+     */
+    template <class InputPCLPointType>
+    void UpdatePointCloud(const pcl::PointCloud<InputPCLPointType> &cloud_in)
     {
-      PCLPointType point;
-      point.x = cloud_in_point.x;
-      point.y = cloud_in_point.y;
-      point.z = cloud_in_point.z;
-      Eigen::Vector3i cell_sub = pointcloud_grid_->Pos2Sub(Eigen::Vector3d(point.x, point.y, point.z));
-      if (!pointcloud_grid_->InRange(cell_sub))
-        continue;
-      int ind = pointcloud_grid_->Sub2Ind(cell_sub);
-      pointcloud_grid_->GetCell(ind)->points.push_back(point);
+      // 将输入点云更新到pointcloud_grid_中
+      for (const auto &cloud_in_point : cloud_in.points)
+      {
+        PCLPointType point;
+        point.x = cloud_in_point.x;
+        point.y = cloud_in_point.y;
+        point.z = cloud_in_point.z;
+        Eigen::Vector3i cell_sub = pointcloud_grid_->Pos2Sub(Eigen::Vector3d(point.x, point.y, point.z));
+        if (!pointcloud_grid_->InRange(cell_sub))
+          continue;
+        int ind = pointcloud_grid_->Sub2Ind(cell_sub);
+        pointcloud_grid_->GetCell(ind)->points.push_back(point);
+      }
+
+      // 对每个单元格中的点云数据应用VoxelGrid滤波器进行下采样。
+      for (int i = 0; i < pointcloud_grid_->GetCellNumber(); ++i)
+      {
+        if (pointcloud_grid_->GetCell(i)->points.empty())
+          continue;
+        cloud_dwz_filter_.setInputCloud(pointcloud_grid_->GetCell(i));
+        cloud_dwz_filter_.setLeafSize(kCloudDwzFilterLeafSize, kCloudDwzFilterLeafSize, kCloudDwzFilterLeafSize);
+        cloud_dwz_filter_.filter(*(pointcloud_grid_->GetCell(i)));
+      }
     }
 
-    for (int i = 0; i < pointcloud_grid_->GetCellNumber(); ++i)
+    void GetPointCloud(PCLCloudType &cloud_out);
+    void ClearNeighborCellOccupancyCloud();
+    pcl::PointCloud<pcl::PointXYZI>::Ptr GetRolledInOccupancyCloud();
+    void GetOccupancyCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr &occupancy_cloud);
+    void StoreOccupancyCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr &occupancy_cloud);
+    void GetMarker(visualization_msgs::Marker &marker);
+    void GetVisualizationPointCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr vis_cloud);
+    Eigen::Vector3d GetNeighborCellsOrigin()
     {
-      if (pointcloud_grid_->GetCell(i)->points.empty())
-        continue;
-      cloud_dwz_filter_.setInputCloud(pointcloud_grid_->GetCell(i));
-      cloud_dwz_filter_.setLeafSize(kCloudDwzFilterLeafSize, kCloudDwzFilterLeafSize, kCloudDwzFilterLeafSize);
-      cloud_dwz_filter_.filter(*(pointcloud_grid_->GetCell(i)));
+      return neighbor_cells_origin_;
     }
-  }
+    geometry_msgs::Point GetOrigin()
+    {
+      return origin_;
+    }
+    double &SetCloudDwzFilterLeafSize()
+    {
+      return kCloudDwzFilterLeafSize;
+    }
+    void GetCloudPointIndex(int index, int &cloud_index, int &cloud_point_index);
+    int GetAllPointNum();
 
-  void GetPointCloud(PCLCloudType& cloud_out);
-  void ClearNeighborCellOccupancyCloud();
-  pcl::PointCloud<pcl::PointXYZI>::Ptr GetRolledInOccupancyCloud();
-  void GetOccupancyCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr& occupancy_cloud);
-  void StoreOccupancyCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& occupancy_cloud);
-  void GetMarker(visualization_msgs::Marker& marker);
-  void GetVisualizationPointCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr vis_cloud);
-  Eigen::Vector3d GetNeighborCellsOrigin()
-  {
-    return neighbor_cells_origin_;
-  }
-  geometry_msgs::Point GetOrigin()
-  {
-    return origin_;
-  }
-  double& SetCloudDwzFilterLeafSize()
-  {
-    return kCloudDwzFilterLeafSize;
-  }
-  void GetCloudPointIndex(int index, int& cloud_index, int& cloud_point_index);
-  int GetAllPointNum();
+    void UpdateOldCloudPoints();
+    void UpdateCoveredCloudPoints();
+    void UpdateCoveredCloudPoints(int cloud_index, int point_index);
 
-  void UpdateOldCloudPoints();
-  void UpdateCoveredCloudPoints();
-  void UpdateCoveredCloudPoints(int cloud_index, int point_index);
+  private:
+    std::unique_ptr<grid_ns::Grid<PCLCloudTypePtr>> pointcloud_grid_;
+    std::unique_ptr<grid_ns::Grid<pcl::PointCloud<pcl::PointXYZI>::Ptr>> occupancy_cloud_grid_;
 
-private:
-  std::unique_ptr<grid_ns::Grid<PCLCloudTypePtr>> pointcloud_grid_;
-  std::unique_ptr<grid_ns::Grid<pcl::PointCloud<pcl::PointXYZI>::Ptr>> occupancy_cloud_grid_;
+    const int kRowNum;
+    const int kColNum;
+    const int kLevelNum;
+    const int kMaxCellPointNum;
+    const double kCellSize;
+    const double kCellHeight;
+    const int kNeighborCellNum;
+    double kCloudDwzFilterLeafSize;
 
-  const int kRowNum;
-  const int kColNum;
-  const int kLevelNum;
-  const int kMaxCellPointNum;
-  const double kCellSize;
-  const double kCellHeight;
-  const int kNeighborCellNum;
-  double kCloudDwzFilterLeafSize;
+    geometry_msgs::Point robot_position_;
+    geometry_msgs::Point origin_;
+    Eigen::Vector3d neighbor_cells_origin_;
 
-  geometry_msgs::Point robot_position_;
-  geometry_msgs::Point origin_;
-  Eigen::Vector3d neighbor_cells_origin_;
+    int cur_row_idx_;
+    int cur_col_idx_;
+    int cur_level_idx_;
 
-  int cur_row_idx_;
-  int cur_col_idx_;
-  int cur_level_idx_;
+    bool initialized_;
 
-  bool initialized_;
+    pcl::VoxelGrid<PCLPointType> cloud_dwz_filter_;
+    pcl::PointCloud<pcl::PointXYZI>::Ptr rolled_in_occupancy_cloud_;  // 存储占用栅格滚动更新后从滚出的占用栅格转换成的点云
 
-  pcl::VoxelGrid<PCLPointType> cloud_dwz_filter_;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr rolled_in_occupancy_cloud_;
+    std::vector<int> neighbor_indices_;
+    std::vector<int> prev_neighbor_indices_;
+    std::vector<int> new_neighbor_indices_;
 
-  std::vector<int> neighbor_indices_;
-  std::vector<int> prev_neighbor_indices_;
-  std::vector<int> new_neighbor_indices_;
-
-  void UpdateOrigin();
-};
-}  // namespace pointcloud_manager_ns
+    void UpdateOrigin();
+  };
+} // namespace pointcloud_manager_ns

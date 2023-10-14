@@ -36,339 +36,388 @@
 
 namespace viewpoint_manager_ns
 {
-struct ViewPointManagerParameter
-{
-  // Layout
-  bool kUseFrontier;
-  int dimension_;
-  int kViewPointNumber;
-  Eigen::Vector3i kNumber;
-  Eigen::Vector3i kRolloverStepsize;
-  Eigen::Vector3d kResolution;
-  Eigen::Vector3d LocalPlanningHorizonSize;
-
-  // Collision check
-  double kConnectivityHeightDiffThr;
-
-  // Collision grid
-  Eigen::Vector3i kCollisionGridSize;
-  Eigen::Vector3d kCollisionGridResolution;
-  double kViewPointCollisionMargin;
-  double kViewPointCollisionMarginZPlus;
-  double kViewPointCollisionMarginZMinus;
-  double kCollisionGridZScale;
-  int kCollisionPointThr;
-
-  // Line of Sight Check
-  bool kLineOfSightStopAtNearestObstacle;
-  bool kCheckDynamicObstacleCollision;
-  int kCollisionFrameCountMax;
-
-  // Terrain height
-  double kViewPointHeightFromTerrain;
-  double kViewPointHeightFromTerrainChangeThreshold;
-
-  // Coverage
-  double kCoverageOcclusionThr;
-  double kCoverageDilationRadius;
-  double kCoveragePointCloudResolution;
-
-  // Distances
-  double kSensorRange;
-  double kVisitRange;
-  double kNeighborRange;
-  double kHeightFromTerrain;
-  double kDistanceToIntConst;
-
-  // FOV
-  double kVerticalFOVRatio;
-  double kDiffZMax;
-  double kInFovXYDistThreshold;
-  double kInFovZDiffThreshold;
-
-  bool ReadParameters(ros::NodeHandle& nh);
-};
-
-class ViewPointManager
-{
-public:
-  std::vector<int> candidate_indices_;
-  explicit ViewPointManager(ros::NodeHandle& nh);
-  ~ViewPointManager() = default;
-
-  int GetViewPointArrayInd(int viewpoint_ind, bool use_array_ind = false) const;
-  int GetViewPointInd(int viewpoint_array_ind) const;
-
-  inline bool InRange(int viewpoint_ind)
+  struct ViewPointManagerParameter
   {
-    return grid_->InRange(viewpoint_ind);
-  }
-  inline bool InRange(const Eigen::Vector3i& sub)
-  {
-    return grid_->InRange(sub);
-  }
-  inline int GetViewPointNum()
-  {
-    return viewpoints_.size();
-  }
-  Eigen::Vector3d GetResolution()
-  {
-    return vp_.kResolution;
-  }
-  inline void UpdateViewPointBoundary(const geometry_msgs::Polygon& polygon)
-  {
-    viewpoint_boundary_ = polygon;
-  }
+    // Layout
+    bool kUseFrontier;
+    int dimension_;
+    int kViewPointNumber;
+    Eigen::Vector3i kNumber;
+    Eigen::Vector3i kRolloverStepsize;
+    Eigen::Vector3d kResolution;
+    Eigen::Vector3d LocalPlanningHorizonSize;
 
-  inline void UpdateNogoBoundary(const std::vector<geometry_msgs::Polygon>& nogo_boundary)
-  {
-    nogo_boundary_ = nogo_boundary;
-  }
-  bool UpdateRobotPosition(const Eigen::Vector3d& robot_position);
-  void UpdateOrigin();
-  Eigen::Vector3i GetViewPointSub(Eigen::Vector3d position);
-  int GetViewPointInd(Eigen::Vector3d position);
-  Eigen::Vector3d GetOrigin()
-  {
-    return origin_;
-  }
+    // Collision check
+    double kConnectivityHeightDiffThr;
 
-  bool InCollision(const Eigen::Vector3d& position);
-  bool InCurrentFrameLineOfSight(const Eigen::Vector3d& position);
-  void CheckViewPointBoundaryCollision();
-  void CheckViewPointCollisionWithCollisionGrid(const pcl::PointCloud<pcl::PointXYZI>::Ptr& collision_cloud);
-  void CheckViewPointCollision(const pcl::PointCloud<pcl::PointXYZI>::Ptr& collision_cloud);
-  void CheckViewPointCollisionWithTerrain(const pcl::PointCloud<pcl::PointXYZI>::Ptr& terrain_cloud,
-                                          double collision_threshold);
-  void CheckViewPointLineOfSightHelper(const Eigen::Vector3i& start_sub, const Eigen::Vector3i& end_sub,
-                                       const Eigen::Vector3i& max_sub, const Eigen::Vector3i& min_sub);
-  void CheckViewPointLineOfSight();
-  void CheckViewPointInFOV();
-  bool InFOV(const Eigen::Vector3d& point_position, const Eigen::Vector3d& viewpoint_position);
-  bool InFOVAndRange(const Eigen::Vector3d& point_position, const Eigen::Vector3d& viewpoint_position);
-  bool InRobotFOV(const Eigen::Vector3d& position);
-  void CheckViewPointConnectivity();
-  void UpdateViewPointVisited(const std::vector<Eigen::Vector3d>& positions);
-  void UpdateViewPointVisited(std::unique_ptr<grid_world_ns::GridWorld> const& grid_world);
-  void SetViewPointHeightWithTerrain(const pcl::PointCloud<pcl::PointXYZI>::Ptr& terrain_cloud,
-                                     double terrain_height_threshold = DBL_MAX);
+    // Collision grid
+    Eigen::Vector3i kCollisionGridSize;
+    Eigen::Vector3d kCollisionGridResolution;
+    double kViewPointCollisionMargin;
+    double kViewPointCollisionMarginZPlus;
+    double kViewPointCollisionMarginZMinus;
+    double kCollisionGridZScale;
+    int kCollisionPointThr;
 
-  template <class PCLPointType>
-  void UpdateViewPointCoverage(const typename pcl::PointCloud<PCLPointType>::Ptr& cloud)
+    // Line of Sight Check
+    bool kLineOfSightStopAtNearestObstacle;
+    bool kCheckDynamicObstacleCollision;
+    int kCollisionFrameCountMax;
+
+    // Terrain height
+    double kViewPointHeightFromTerrain;
+    double kViewPointHeightFromTerrainChangeThreshold;
+
+    // Coverage
+    double kCoverageOcclusionThr;
+    double kCoverageDilationRadius;
+    double kCoveragePointCloudResolution;
+
+    // Distances
+    double kSensorRange;
+    double kVisitRange;
+    double kNeighborRange;
+    double kHeightFromTerrain;
+    double kDistanceToIntConst;
+
+    // FOV
+    double kVerticalFOVRatio;
+    double kDiffZMax;
+    double kInFovXYDistThreshold;
+    double kInFovZDiffThreshold;
+
+    bool ReadParameters(ros::NodeHandle &nh);
+  };
+
+  class ViewPointManager
   {
-    // std::cout << "update cloud size: " << cloud->points.size() << std::endl;
-    int update_viewpoint_count = 0;
-    for (auto& viewpoint : viewpoints_)
+  public:
+    std::vector<int> candidate_indices_;
+    explicit ViewPointManager(ros::NodeHandle &nh);
+    ~ViewPointManager() = default;
+
+    int GetViewPointArrayInd(int viewpoint_ind, bool use_array_ind = false) const;
+    int GetViewPointInd(int viewpoint_array_ind) const;
+
+    inline bool InRange(int viewpoint_ind)
     {
-      if (viewpoint.InCollision())
-      {
-        continue;
-      }
-      update_viewpoint_count++;
+      return grid_->InRange(viewpoint_ind);
     }
-    // std::cout << "update viewpoint num: " << update_viewpoint_count << std::endl;
-    for (const auto& point : cloud->points)
+    inline bool InRange(const Eigen::Vector3i &sub)
     {
-      for (int i = 0; i < viewpoints_.size(); i++)
-      // for (auto& viewpoint : viewpoints_)
+      return grid_->InRange(sub);
+    }
+    inline int GetViewPointNum()
+    {
+      return viewpoints_.size();
+    }
+    Eigen::Vector3d GetResolution()
+    {
+      return vp_.kResolution;
+    }
+    inline void UpdateViewPointBoundary(const geometry_msgs::Polygon &polygon)
+    {
+      viewpoint_boundary_ = polygon;
+    }
+
+    inline void UpdateNogoBoundary(const std::vector<geometry_msgs::Polygon> &nogo_boundary)
+    {
+      nogo_boundary_ = nogo_boundary;
+    }
+    bool UpdateRobotPosition(const Eigen::Vector3d &robot_position);
+    void UpdateOrigin();
+    Eigen::Vector3i GetViewPointSub(Eigen::Vector3d position);
+    int GetViewPointInd(Eigen::Vector3d position);
+    Eigen::Vector3d GetOrigin()
+    {
+      return origin_;
+    }
+
+    bool InCollision(const Eigen::Vector3d &position);
+    bool InCurrentFrameLineOfSight(const Eigen::Vector3d &position);
+    void CheckViewPointBoundaryCollision();
+    void CheckViewPointCollisionWithCollisionGrid(const pcl::PointCloud<pcl::PointXYZI>::Ptr &collision_cloud);
+    void CheckViewPointCollision(const pcl::PointCloud<pcl::PointXYZI>::Ptr &collision_cloud);
+    void CheckViewPointCollisionWithTerrain(const pcl::PointCloud<pcl::PointXYZI>::Ptr &terrain_cloud,
+                                            double collision_threshold);
+    void CheckViewPointLineOfSightHelper(const Eigen::Vector3i &start_sub, const Eigen::Vector3i &end_sub,
+                                         const Eigen::Vector3i &max_sub, const Eigen::Vector3i &min_sub);
+    void CheckViewPointLineOfSight();
+    void CheckViewPointInFOV();
+    bool InFOV(const Eigen::Vector3d &point_position, const Eigen::Vector3d &viewpoint_position);
+    bool InFOVAndRange(const Eigen::Vector3d &point_position, const Eigen::Vector3d &viewpoint_position);
+    bool InRobotFOV(const Eigen::Vector3d &position);
+    void CheckViewPointConnectivity();
+    void UpdateViewPointVisited(const std::vector<Eigen::Vector3d> &positions);
+    void UpdateViewPointVisited(std::unique_ptr<grid_world_ns::GridWorld> const &grid_world);
+    void SetViewPointHeightWithTerrain(const pcl::PointCloud<pcl::PointXYZI>::Ptr &terrain_cloud,
+                                       double terrain_height_threshold = DBL_MAX);
+
+    /**
+     * @brief 根据点云数据更新所有视点的覆盖状态。
+     *
+     * @tparam PCLPointType
+     * @param cloud
+     */
+    template <class PCLPointType>
+    void UpdateViewPointCoverage(const typename pcl::PointCloud<PCLPointType>::Ptr &cloud)
+    {
+      std::cerr << "update diff cloud size: " << cloud->points.size() << std::endl;
+      int update_viewpoint_count = 0;
+      for (auto &viewpoint : viewpoints_)
       {
-        if (viewpoints_[i].InCollision())
+        // 跳过碰撞的视点
+        if (viewpoint.InCollision())
         {
           continue;
         }
-        geometry_msgs::Point viewpoint_position = viewpoints_[i].GetPosition();
-        if (misc_utils_ns::InFOVSimple(
-                Eigen::Vector3d(point.x, point.y, point.z),
-                Eigen::Vector3d(viewpoint_position.x, viewpoint_position.y, viewpoint_position.z),
-                vp_.kVerticalFOVRatio, vp_.kSensorRange, vp_.kInFovXYDistThreshold, vp_.kInFovZDiffThreshold))
+        // 统计非碰撞的视点数量
+        update_viewpoint_count++;
+      }
+      std::cerr << "update diff viewpoint num: " << update_viewpoint_count << std::endl;
+      // 对每一个给定的点云，遍历每一个视点判断
+      for (const auto &point : cloud->points)
+      {
+        for (int i = 0; i < viewpoints_.size(); i++)
+        // for (auto& viewpoint : viewpoints_)
         {
-          viewpoints_[i].UpdateCoverage<PCLPointType>(point);
+          // 跳过碰撞的视点
+          if (viewpoints_[i].InCollision())
+          {
+            continue;
+          }
+
+          // 获取视点位置
+          geometry_msgs::Point viewpoint_position = viewpoints_[i].GetPosition();
+
+          // 检查点云中的点是否在当前视点的视场内。该函数判断点是否位于视点的视野范围内，考虑了垂直视野角、传感器范围、水平和垂直视野阈值等参数
+          if (misc_utils_ns::InFOVSimple(
+                  Eigen::Vector3d(point.x, point.y, point.z),
+                  Eigen::Vector3d(viewpoint_position.x, viewpoint_position.y, viewpoint_position.z),
+                  vp_.kVerticalFOVRatio, vp_.kSensorRange, vp_.kInFovXYDistThreshold, vp_.kInFovZDiffThreshold))
+          {
+            // 更新视点覆盖状态，每个视点本身的lidar_model_，存储视点本身位置到每个雷达模型上的点的距离
+            viewpoints_[i].UpdateCoverage<PCLPointType>(point);
+          }
         }
       }
     }
-  }
 
-  template <class PCLPointType>
-  void UpdateRolledOverViewPointCoverage(const typename pcl::PointCloud<PCLPointType>::Ptr& cloud)
-  {
-    for (const auto& point : cloud->points)
+    /**
+     * @brief 根据输入的点云数据更新已经被覆盖（"rolled over"）的视点的感知信息
+     *
+     * @tparam PCLPointType
+     * @param cloud
+     */
+    template <class PCLPointType>
+    void UpdateRolledOverViewPointCoverage(const typename pcl::PointCloud<PCLPointType>::Ptr &cloud)
     {
-      for (const auto& viewpoint_ind : updated_viewpoint_indices_)
+      std::cerr << "update stack cloud size: " << cloud->points.size() << std::endl;
+      int update_viewpoint_count = 0;
+      for (const auto &viewpoint_ind : updated_viewpoint_indices_)
       {
         int array_ind = grid_->GetArrayInd(viewpoint_ind);
         if (viewpoints_[array_ind].InCollision())
         {
           continue;
         }
-        geometry_msgs::Point viewpoint_position = viewpoints_[array_ind].GetPosition();
-        if (misc_utils_ns::InFOVSimple(
-                Eigen::Vector3d(point.x, point.y, point.z),
-                Eigen::Vector3d(viewpoint_position.x, viewpoint_position.y, viewpoint_position.z),
-                vp_.kVerticalFOVRatio, vp_.kSensorRange, vp_.kInFovXYDistThreshold, vp_.kInFovZDiffThreshold))
+        update_viewpoint_count++;
+      }
+      std::cerr << "update stack viewpoint num: " << update_viewpoint_count << std::endl;
+
+      for (const auto &point : cloud->points)
+      {
+        for (const auto &viewpoint_ind : updated_viewpoint_indices_)
         {
-          viewpoints_[array_ind].UpdateCoverage<PCLPointType>(point);
+          int array_ind = grid_->GetArrayInd(viewpoint_ind);
+          if (viewpoints_[array_ind].InCollision())
+          {
+            continue;
+          }
+          geometry_msgs::Point viewpoint_position = viewpoints_[array_ind].GetPosition();
+          if (misc_utils_ns::InFOVSimple(
+                  Eigen::Vector3d(point.x, point.y, point.z),
+                  Eigen::Vector3d(viewpoint_position.x, viewpoint_position.y, viewpoint_position.z),
+                  vp_.kVerticalFOVRatio, vp_.kSensorRange, vp_.kInFovXYDistThreshold, vp_.kInFovZDiffThreshold))
+          {
+            viewpoints_[array_ind].UpdateCoverage<PCLPointType>(point);
+          }
         }
       }
     }
-  }
 
-  inline double GetSensorRange() const
-  {
-    return vp_.kSensorRange;
-  }
-  inline double GetCoverageOcclusionThr() const
-  {
-    return vp_.kCoverageOcclusionThr;
-  }
-  inline double GetCoverageDilationRadius() const
-  {
-    return vp_.kCoverageDilationRadius;
-  }
-
-  template <class PointType>
-  bool VisibleByViewPoint(const PointType& point, int viewpoint_ind)
-  {
-    MY_ASSERT(grid_->InRange(viewpoint_ind));
-    int array_ind = grid_->GetArrayInd(viewpoint_ind);
-    geometry_msgs::Point viewpoint_position = viewpoints_[array_ind].GetPosition();
-    if (std::abs(point.z - viewpoint_position.z) > vp_.kDiffZMax)
+    inline double GetSensorRange() const
     {
-      return false;
+      return vp_.kSensorRange;
     }
-    if (!misc_utils_ns::InFOVSimple(Eigen::Vector3d(point.x, point.y, point.z),
-                                    Eigen::Vector3d(viewpoint_position.x, viewpoint_position.y, viewpoint_position.z),
-                                    vp_.kVerticalFOVRatio, vp_.kSensorRange, vp_.kInFovXYDistThreshold,
-                                    vp_.kInFovZDiffThreshold))
+    inline double GetCoverageOcclusionThr() const
     {
-      return false;
+      return vp_.kCoverageOcclusionThr;
     }
-    bool visible = viewpoints_[array_ind].CheckVisibility<PointType>(point, vp_.kCoverageOcclusionThr);
+    inline double GetCoverageDilationRadius() const
+    {
+      return vp_.kCoverageDilationRadius;
+    }
 
-    return visible;
-  }
+    /**
+     * @brief 判断给定点是否能够被特定视点所看到，考虑了高度差、视场角度和覆盖范围等条件。
+     *
+     * @tparam PointType
+     * @param point 给定的待判定点
+     * @param viewpoint_ind 给定视点
+     * @return true
+     * @return false
+     */
+    template <class PointType>
+    bool VisibleByViewPoint(const PointType &point, int viewpoint_ind)
+    {
+      MY_ASSERT(grid_->InRange(viewpoint_ind));
+      int array_ind = grid_->GetArrayInd(viewpoint_ind);
+      geometry_msgs::Point viewpoint_position = viewpoints_[array_ind].GetPosition();
 
-  // Viewpoint management
-  void ResetViewPoint(int viewpoint_ind, bool use_array_ind = false);
-  void ResetViewPointCoverage();
+      // 先判定是否高度差太大
+      if (std::abs(point.z - viewpoint_position.z) > vp_.kDiffZMax)
+      {
+        return false;
+      }
 
-  bool ViewPointInCollision(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointCollision(int viewpoint_ind, bool in_collision, bool use_array_ind = false);
+      // 检查点是否在视点的水平和垂直视场中，是否在视点的有效范围内，
+      if (!misc_utils_ns::InFOVSimple(Eigen::Vector3d(point.x, point.y, point.z),
+                                      Eigen::Vector3d(viewpoint_position.x, viewpoint_position.y, viewpoint_position.z),
+                                      vp_.kVerticalFOVRatio, vp_.kSensorRange, vp_.kInFovXYDistThreshold,
+                                      vp_.kInFovZDiffThreshold))
+      {
+        return false;
+      }
 
-  bool ViewPointInLineOfSight(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointInLineOfSight(int viewpoint_ind, bool in_line_of_sight, bool use_array_ind = false);
+      // 判断点是否在视点的覆盖范围内可见
+      bool visible = viewpoints_[array_ind].CheckVisibility<PointType>(point, vp_.kCoverageOcclusionThr);
 
-  bool ViewPointConnected(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointConnected(int viewpoint_ind, bool connected, bool use_array_ind = false);
+      return visible;
+    }
 
-  bool ViewPointVisited(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointVisited(int viewpoint_ind, bool visited, bool use_array_ind = false);
+    // Viewpoint management
+    void ResetViewPoint(int viewpoint_ind, bool use_array_ind = false);
+    void ResetViewPointCoverage();
 
-  bool ViewPointSelected(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointSelected(int viewpoint_ind, bool selected, bool use_array_ind = false);
+    bool ViewPointInCollision(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointCollision(int viewpoint_ind, bool in_collision, bool use_array_ind = false);
 
-  bool IsViewPointCandidate(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointCandidate(int viewpoint_ind, bool candidate, bool use_array_ind = false);
+    bool ViewPointInLineOfSight(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointInLineOfSight(int viewpoint_ind, bool in_line_of_sight, bool use_array_ind = false);
 
-  bool ViewPointHasTerrainHeight(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointHasTerrainHeight(int viewpoint_ind, bool has_terrain_height, bool use_array_ind = false);
+    bool ViewPointConnected(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointConnected(int viewpoint_ind, bool connected, bool use_array_ind = false);
 
-  bool ViewPointInExploringCell(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointInExploringCell(int viewpoint_ind, bool in_exploring_cell, bool use_array_ind = false);
+    bool ViewPointVisited(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointVisited(int viewpoint_ind, bool visited, bool use_array_ind = false);
 
-  double GetViewPointHeight(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointHeight(int viewpoint_ind, double height, bool use_array_ind = false);
+    bool ViewPointSelected(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointSelected(int viewpoint_ind, bool selected, bool use_array_ind = false);
 
-  bool ViewPointInCurrentFrameLineOfSight(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointInCurrentFrameLineOfSight(int viewpoint_ind, bool in_current_frame_line_of_sight,
+    bool IsViewPointCandidate(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointCandidate(int viewpoint_ind, bool candidate, bool use_array_ind = false);
+
+    bool ViewPointHasTerrainHeight(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointHasTerrainHeight(int viewpoint_ind, bool has_terrain_height, bool use_array_ind = false);
+
+    bool ViewPointInExploringCell(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointInExploringCell(int viewpoint_ind, bool in_exploring_cell, bool use_array_ind = false);
+
+    double GetViewPointHeight(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointHeight(int viewpoint_ind, double height, bool use_array_ind = false);
+
+    bool ViewPointInCurrentFrameLineOfSight(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointInCurrentFrameLineOfSight(int viewpoint_ind, bool in_current_frame_line_of_sight,
+                                               bool use_array_ind = false);
+
+    geometry_msgs::Point GetViewPointPosition(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointPosition(int viewpoint_ind, geometry_msgs::Point position, bool use_array_ind = false);
+
+    int GetViewPointCellInd(int viewpoint_ind, bool use_array_ind = false);
+    void SetViewPointCellInd(int viewpoint_ind, int cell_ind, bool use_array_ind = false);
+
+    int GetViewPointCollisionFrameCount(int viewpoint_ind, bool use_array_ind = false);
+    void AddViewPointCollisionFrameCount(int viewpoint_ind, bool use_array_ind = false);
+    void ResetViewPointCollisionFrameCount(int viewpoint_ind, bool use_array_ind = false);
+
+    void ResetViewPointCoveredPointList(int viewpoint_ind, bool use_array_ind = false);
+    void AddUncoveredPoint(int viewpoint_ind, int point_ind, bool use_array_ind = false);
+    void AddUncoveredFrontierPoint(int viewpoint_ind, int point_ind, bool use_array_ind = false);
+    const std::vector<int> &GetViewPointCoveredPointList(int viewpoint_ind, bool use_array_ind = false) const;
+    const std::vector<int> &GetViewPointCoveredFrontierPointList(int viewpoint_ind, bool use_array_ind = false) const;
+
+    int GetViewPointCoveredPointNum(int viewpoint_ind, bool use_array_ind = false);
+    int GetViewPointCoveredFrontierPointNum(int viewpoint_ind, bool use_array_ind = false);
+    int GetViewPointCoveredPointNum(const std::vector<bool> &point_list, int viewpoint_index, bool use_array_ind = false);
+    int GetViewPointCoveredFrontierPointNum(const std::vector<bool> &frontier_point_list, int viewpoint_index,
+                                            bool use_array_ind = false);
+    void UpdateViewPointCoveredPoint(std::vector<bool> &point_list, int viewpoint_index, bool use_array_ind = false);
+    void UpdateViewPointCoveredFrontierPoint(std::vector<bool> &frontier_point_list, int viewpoint_index,
                                              bool use_array_ind = false);
 
-  geometry_msgs::Point GetViewPointPosition(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointPosition(int viewpoint_ind, geometry_msgs::Point position, bool use_array_ind = false);
+    int GetViewPointCandidate();
+    std::vector<int> GetViewPointCandidateIndices() const
+    {
+      return candidate_indices_;
+    }
+    nav_msgs::Path GetViewPointShortestPath(int start_viewpoint_ind, int target_viewpoint_ind);
+    nav_msgs::Path GetViewPointShortestPath(const Eigen::Vector3d &start_position,
+                                            const Eigen::Vector3d &target_position);
+    bool GetViewPointShortestPathWithMaxLength(const Eigen::Vector3d &start_position,
+                                               const Eigen::Vector3d &target_position, double max_path_length,
+                                               nav_msgs::Path &path);
 
-  int GetViewPointCellInd(int viewpoint_ind, bool use_array_ind = false);
-  void SetViewPointCellInd(int viewpoint_ind, int cell_ind, bool use_array_ind = false);
+    void UpdateCandidateViewPointCellStatus(std::unique_ptr<grid_world_ns::GridWorld> const &grid_world);
 
-  int GetViewPointCollisionFrameCount(int viewpoint_ind, bool use_array_ind = false);
-  void AddViewPointCollisionFrameCount(int viewpoint_ind, bool use_array_ind = false);
-  void ResetViewPointCollisionFrameCount(int viewpoint_ind, bool use_array_ind = false);
+    int GetNearestCandidateViewPointInd(const Eigen::Vector3d &position);
+    bool InLocalPlanningHorizon(const Eigen::Vector3d &position);
+    Eigen::Vector3d GetLocalPlanningHorizonSize()
+    {
+      return vp_.LocalPlanningHorizonSize;
+    }
+    bool UseFrontier()
+    {
+      return vp_.kUseFrontier;
+    }
+    // For visualization
+    void GetVisualizationCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr &vis_cloud);
+    void GetCollisionViewPointVisCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr &cloud);
 
-  void ResetViewPointCoveredPointList(int viewpoint_ind, bool use_array_ind = false);
-  void AddUncoveredPoint(int viewpoint_ind, int point_ind, bool use_array_ind = false);
-  void AddUncoveredFrontierPoint(int viewpoint_ind, int point_ind, bool use_array_ind = false);
-  const std::vector<int>& GetViewPointCoveredPointList(int viewpoint_ind, bool use_array_ind = false) const;
-  const std::vector<int>& GetViewPointCoveredFrontierPointList(int viewpoint_ind, bool use_array_ind = false) const;
+    typedef std::unique_ptr<ViewPointManager> Ptr;
 
-  int GetViewPointCoveredPointNum(int viewpoint_ind, bool use_array_ind = false);
-  int GetViewPointCoveredFrontierPointNum(int viewpoint_ind, bool use_array_ind = false);
-  int GetViewPointCoveredPointNum(const std::vector<bool>& point_list, int viewpoint_index, bool use_array_ind = false);
-  int GetViewPointCoveredFrontierPointNum(const std::vector<bool>& frontier_point_list, int viewpoint_index,
-                                          bool use_array_ind = false);
-  void UpdateViewPointCoveredPoint(std::vector<bool>& point_list, int viewpoint_index, bool use_array_ind = false);
-  void UpdateViewPointCoveredFrontierPoint(std::vector<bool>& frontier_point_list, int viewpoint_index,
-                                           bool use_array_ind = false);
+  private:
+    void ComputeConnectedNeighborIndices();
+    void ComputeInRangeNeighborIndices();
+    void GetCandidateViewPointGraph(std::vector<std::vector<int>> &graph, std::vector<std::vector<double>> &dist,
+                                    std::vector<geometry_msgs::Point> &positions);
+    void GetCollisionCorrespondence();
 
-  int GetViewPointCandidate();
-  std::vector<int> GetViewPointCandidateIndices() const
-  {
-    return candidate_indices_;
-  }
-  nav_msgs::Path GetViewPointShortestPath(int start_viewpoint_ind, int target_viewpoint_ind);
-  nav_msgs::Path GetViewPointShortestPath(const Eigen::Vector3d& start_position,
-                                          const Eigen::Vector3d& target_position);
-  bool GetViewPointShortestPathWithMaxLength(const Eigen::Vector3d& start_position,
-                                             const Eigen::Vector3d& target_position, double max_path_length,
-                                             nav_msgs::Path& path);
+    bool initialized_;
+    ViewPointManagerParameter vp_;
+    std::unique_ptr<rolling_grid_ns::RollingGrid> grid_;
+    std::vector<viewpoint_ns::ViewPoint> viewpoints_;
+    std::vector<std::vector<int>> connected_neighbor_indices_; // 存储每个视点（viewpoint）的连接邻居索引
+    std::vector<std::vector<double>> connected_neighbor_dist_; // 存储每个视点（viewpoint）的与其邻居邻居距离
+    std::vector<std::vector<int>> in_range_neighbor_indices_;  // 每个视点的一定距离范围内邻居索引
+    std::vector<int> updated_viewpoint_indices_;
+    std::vector<int> graph_index_map_;
+    Eigen::Vector3d robot_position_;
+    Eigen::Vector3d origin_;
+    Eigen::Vector3d collision_grid_origin_;
+    Eigen::Vector3d local_planning_horizon_size_;
+    std::unique_ptr<grid_ns::Grid<std::vector<int>>> collision_grid_;
+    std::vector<int> collision_point_count_;
+    std::vector<std::vector<int>> candidate_viewpoint_graph_;
+    std::vector<std::vector<double>> candidate_viewpoint_dist_;
+    std::vector<geometry_msgs::Point> candidate_viewpoint_position_;
+    pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtree_viewpoint_candidate_;
+    pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtree_viewpoint_in_collision_;
+    pcl::PointCloud<pcl::PointXYZI>::Ptr viewpoint_candidate_cloud_;
+    pcl::PointCloud<pcl::PointXYZI>::Ptr viewpoint_in_collision_cloud_;
 
-  void UpdateCandidateViewPointCellStatus(std::unique_ptr<grid_world_ns::GridWorld> const& grid_world);
+    geometry_msgs::Polygon viewpoint_boundary_;
+    std::vector<geometry_msgs::Polygon> nogo_boundary_;
+  };
 
-  int GetNearestCandidateViewPointInd(const Eigen::Vector3d& position);
-  bool InLocalPlanningHorizon(const Eigen::Vector3d& position);
-  Eigen::Vector3d GetLocalPlanningHorizonSize()
-  {
-    return vp_.LocalPlanningHorizonSize;
-  }
-  bool UseFrontier()
-  {
-    return vp_.kUseFrontier;
-  }
-  // For visualization
-  void GetVisualizationCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr& vis_cloud);
-  void GetCollisionViewPointVisCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud);
-
-  typedef std::unique_ptr<ViewPointManager> Ptr;
-
-private:
-  void ComputeConnectedNeighborIndices();
-  void ComputeInRangeNeighborIndices();
-  void GetCandidateViewPointGraph(std::vector<std::vector<int>>& graph, std::vector<std::vector<double>>& dist,
-                                  std::vector<geometry_msgs::Point>& positions);
-  void GetCollisionCorrespondence();
-
-  bool initialized_;
-  ViewPointManagerParameter vp_;
-  std::unique_ptr<rolling_grid_ns::RollingGrid> grid_;
-  std::vector<viewpoint_ns::ViewPoint> viewpoints_;
-  std::vector<std::vector<int>> connected_neighbor_indices_;
-  std::vector<std::vector<double>> connected_neighbor_dist_;
-  std::vector<std::vector<int>> in_range_neighbor_indices_;
-  std::vector<int> updated_viewpoint_indices_;
-  std::vector<int> graph_index_map_;
-  Eigen::Vector3d robot_position_;
-  Eigen::Vector3d origin_;
-  Eigen::Vector3d collision_grid_origin_;
-  Eigen::Vector3d local_planning_horizon_size_;
-  std::unique_ptr<grid_ns::Grid<std::vector<int>>> collision_grid_;
-  std::vector<int> collision_point_count_;
-  std::vector<std::vector<int>> candidate_viewpoint_graph_;
-  std::vector<std::vector<double>> candidate_viewpoint_dist_;
-  std::vector<geometry_msgs::Point> candidate_viewpoint_position_;
-  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtree_viewpoint_candidate_;
-  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtree_viewpoint_in_collision_;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr viewpoint_candidate_cloud_;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr viewpoint_in_collision_cloud_;
-
-  geometry_msgs::Polygon viewpoint_boundary_;
-  std::vector<geometry_msgs::Polygon> nogo_boundary_;
-};
-
-}  // namespace viewpoint_manager_ns
+} // namespace viewpoint_manager_ns

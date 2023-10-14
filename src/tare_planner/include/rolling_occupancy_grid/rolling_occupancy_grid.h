@@ -23,78 +23,89 @@
 
 namespace rolling_occupancy_grid_ns
 {
-class RollingOccupancyGrid
-{
-public:
-  enum CellState : char
+  /**
+   * @brief 维护的是一个 big Grid：
+   *        由 kPointCloudManagerNeighborCellNum 个 kPointCloudCellSize * kPointCloudCellSize * kPointCloudCellHeight 的 cell 组成
+   */
+  class RollingOccupancyGrid
   {
-    UNKNOWN = 0,
-    OCCUPIED = 1,
-    FREE = 2,
-    NOT_FRONTIER = 3
-  };
-
-  explicit RollingOccupancyGrid(ros::NodeHandle& nh);
-  ~RollingOccupancyGrid() = default;
-
-  Eigen::Vector3d GetResolution()
-  {
-    return resolution_;
-  }
-
-  void InitializeOrigin(const Eigen::Vector3d& origin);
-  bool UpdateRobotPosition(const Eigen::Vector3d& robot_position);
-  template <class PointType>
-  void UpdateOccupancy(typename pcl::PointCloud<PointType>::Ptr& cloud)
-  {
-    if (!initialized_)
+  public:
+    enum CellState : char
     {
-      return;
+      UNKNOWN = 0,
+      OCCUPIED = 1,
+      FREE = 2,
+      NOT_FRONTIER = 3
+    };
+
+    explicit RollingOccupancyGrid(ros::NodeHandle &nh);
+    ~RollingOccupancyGrid() = default;
+
+    Eigen::Vector3d GetResolution()
+    {
+      return resolution_;
     }
-    updated_grid_indices_.clear();
-    for (const auto& point : cloud->points)
+
+    void InitializeOrigin(const Eigen::Vector3d &origin);
+    bool UpdateRobotPosition(const Eigen::Vector3d &robot_position);
+
+    /**
+     * @brief 通过输入的点云，将其映射到占据栅格地图上，并标记相应的栅格单元格为占据状态。
+     *
+     * @tparam PointType
+     * @param cloud
+     */
+    template <class PointType>
+    void UpdateOccupancy(typename pcl::PointCloud<PointType>::Ptr &cloud)
     {
-      Eigen::Vector3i sub = occupancy_array_->Pos2Sub(Eigen::Vector3d(point.x, point.y, point.z));
-      if (occupancy_array_->InRange(sub))
+      if (!initialized_)
       {
-        int ind = occupancy_array_->Sub2Ind(sub);
-        int array_ind = rolling_grid_->GetArrayInd(ind);
-        occupancy_array_->SetCellValue(array_ind, OCCUPIED);
-        updated_grid_indices_.push_back(ind);
+        return;
+      }
+      updated_grid_indices_.clear();
+      for (const auto &point : cloud->points)
+      {
+        Eigen::Vector3i sub = occupancy_array_->Pos2Sub(Eigen::Vector3d(point.x, point.y, point.z));
+        if (occupancy_array_->InRange(sub))
+        {
+          int ind = occupancy_array_->Sub2Ind(sub);
+          int array_ind = rolling_grid_->GetArrayInd(ind);
+          occupancy_array_->SetCellValue(array_ind, OCCUPIED);
+          updated_grid_indices_.push_back(ind);
+        }
       }
     }
-  }
-  void UpdateOccupancyStatus(const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud);
-  void RayTrace(const Eigen::Vector3d& origin, const Eigen::Vector3d& range);
-  void RayTrace(const Eigen::Vector3d& origin);
-  void RayTraceHelper(const Eigen::Vector3i& start_sub, const Eigen::Vector3i& end_sub,
-                      std::vector<Eigen::Vector3i>& cells);
+    void UpdateOccupancyStatus(const pcl::PointCloud<pcl::PointXYZI>::Ptr &cloud);
+    void RayTrace(const Eigen::Vector3d &origin, const Eigen::Vector3d &range);
+    void RayTrace(const Eigen::Vector3d &origin);
+    void RayTraceHelper(const Eigen::Vector3i &start_sub, const Eigen::Vector3i &end_sub,
+                        std::vector<Eigen::Vector3i> &cells);
 
-  void GetFrontier(pcl::PointCloud<pcl::PointXYZI>::Ptr& frontier_cloud, const Eigen::Vector3d& origin,
-                   const Eigen::Vector3d& range);
-  pcl::PointCloud<pcl::PointXYZI>::Ptr GetRolledOutOccupancyCloud()
-  {
-    return occupancy_cloud_;
-  }
-  void GetVisualizationCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr& vis_cloud);
+    void GetFrontier(pcl::PointCloud<pcl::PointXYZI>::Ptr &frontier_cloud, const Eigen::Vector3d &origin,
+                     const Eigen::Vector3d &range);
+    pcl::PointCloud<pcl::PointXYZI>::Ptr GetRolledOutOccupancyCloud()
+    {
+      return occupancy_cloud_;
+    }
+    void GetVisualizationCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr &vis_cloud);
 
-private:
-  bool initialized_;
-  int dimension_;
-  Eigen::Vector3d range_;
-  Eigen::Vector3i grid_size_;
-  Eigen::Vector3d rollover_range_;
-  Eigen::Vector3i rollover_step_size_;
-  Eigen::Vector3d resolution_;
-  Eigen::Vector3d origin_;
-  Eigen::Vector3d robot_position_;
-  std::unique_ptr<rolling_grid_ns::RollingGrid> rolling_grid_;
-  std::unique_ptr<grid_ns::Grid<CellState>> occupancy_array_;
-  std::vector<int> updated_grid_indices_;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr occupancy_cloud_;
+  private:
+    bool initialized_;
+    int dimension_;
+    Eigen::Vector3d range_;              // big grid 的范围
+    Eigen::Vector3i grid_size_;          // big grid 中的 small grid 个数
+    Eigen::Vector3d rollover_range_;     // 滚动范围
+    Eigen::Vector3i rollover_step_size_; // 滚动范围包含的 small grid 个数
+    Eigen::Vector3d resolution_;         // small grid 的分辨率
+    Eigen::Vector3d origin_;             // 原点
+    Eigen::Vector3d robot_position_;     // 机器人当前位置
+    std::unique_ptr<rolling_grid_ns::RollingGrid> rolling_grid_;
+    std::unique_ptr<grid_ns::Grid<CellState>> occupancy_array_;
+    std::vector<int> updated_grid_indices_;
+    pcl::PointCloud<pcl::PointXYZI>::Ptr occupancy_cloud_;
 
-  bool InRange(const Eigen::Vector3i& sub, const Eigen::Vector3i& sub_min, const Eigen::Vector3i& sub_max);
+    bool InRange(const Eigen::Vector3i &sub, const Eigen::Vector3i &sub_min, const Eigen::Vector3i &sub_max);
 
-  // void InitializeOrigin();
-};
-}  // namespace rolling_occupancy_grid_ns
+    // void InitializeOrigin();
+  };
+} // namespace rolling_occupancy_grid_ns

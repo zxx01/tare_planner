@@ -16,226 +16,237 @@
 
 namespace grid_ns
 {
-template <typename _T>
-class Grid
-{
-public:
-  explicit Grid(const Eigen::Vector3i& size, _T init_value, const Eigen::Vector3d& origin = Eigen::Vector3d(0, 0, 0),
-                const Eigen::Vector3d& resolution = Eigen::Vector3d(1, 1, 1), int dimension = 3)
+  template <typename _T>
+  class Grid
   {
-    // MY_ASSERT(size.x() > 0);
-    // MY_ASSERT(size.y() > 0);
-    // MY_ASSERT(size.z() > 0);
-
-    origin_ = origin;
-    size_ = size;
-    resolution_ = resolution;
-    dimension_ = dimension;
-
-    for (int i = 0; i < dimension_; i++)
+  public:
+    /**
+     * @brief Construct a new Grid object
+     *        初始化了grid的size、origin、resolution和dimension，
+     *        然后求解了每个维度信息上的resolution_inv、cell_number_,初始化了cells_和subs_。
+     *
+     * @param size         每个维度上grid的个数
+     * @param init_value   每个grid的初始内容
+     * @param origin       整个Grid的原点
+     * @param resolution   grid分辨率
+     * @param dimension    Grid的维度
+     */
+    explicit Grid(const Eigen::Vector3i &size, _T init_value, const Eigen::Vector3d &origin = Eigen::Vector3d(0, 0, 0),
+                  const Eigen::Vector3d &resolution = Eigen::Vector3d(1, 1, 1), int dimension = 3)
     {
-      resolution_inv_(i) = 1.0 / resolution_(i);
+      // MY_ASSERT(size.x() > 0);
+      // MY_ASSERT(size.y() > 0);
+      // MY_ASSERT(size.z() > 0);
+
+      origin_ = origin;
+      size_ = size;
+      resolution_ = resolution;
+      dimension_ = dimension;
+
+      for (int i = 0; i < dimension_; i++)
+      {
+        resolution_inv_(i) = 1.0 / resolution_(i);
+      }
+      cell_number_ = size_.x() * size_.y() * size_.z();
+      for (int i = 0; i < cell_number_; i++)
+      {
+        cells_.push_back(init_value);
+        subs_.push_back(ind2sub_(i));
+      }
     }
-    cell_number_ = size_.x() * size_.y() * size_.z();
-    for (int i = 0; i < cell_number_; i++)
+
+    virtual ~Grid() = default;
+
+    int GetCellNumber() const
     {
-      cells_.push_back(init_value);
-      subs_.push_back(ind2sub_(i));
+      return cell_number_;
     }
-  }
 
-  virtual ~Grid() = default;
-
-  int GetCellNumber() const
-  {
-    return cell_number_;
-  }
-
-  Eigen::Vector3i GetSize() const
-  {
-    return size_;
-  }
-
-  Eigen::Vector3d GetOrigin() const
-  {
-    return origin_;
-  }
-
-  void SetOrigin(const Eigen::Vector3d& origin)
-  {
-    origin_ = origin;
-  }
-
-  void SetResolution(const Eigen::Vector3d& resolution)
-  {
-    resolution_ = resolution;
-    for (int i = 0; i < dimension_; i++)
+    Eigen::Vector3i GetSize() const
     {
-      resolution_inv_(i) = 1.0 / resolution(i);
+      return size_;
     }
-  }
 
-  Eigen::Vector3d GetResolution() const
-  {
-    return resolution_;
-  }
-
-  Eigen::Vector3d GetResolutionInv() const
-  {
-    return resolution_inv_;
-  }
-
-  bool InRange(int x, int y, int z) const
-  {
-    return InRange(Eigen::Vector3i(x, y, z));
-  }
-
-  bool InRange(const Eigen::Vector3i& sub) const
-  {
-    bool in_range = true;
-    for (int i = 0; i < dimension_; i++)
+    Eigen::Vector3d GetOrigin() const
     {
-      in_range &= sub(i) >= 0 && sub(i) < size_(i);
+      return origin_;
     }
-    return in_range;
-  }
 
-  bool InRange(int ind) const
-  {
-    return ind >= 0 && ind < cell_number_;
-  }
-
-  Eigen::Vector3i Ind2Sub(int ind) const
-  {
-    // MY_ASSERT(InRange(ind));
-    return subs_[ind];
-  }
-
-  int Sub2Ind(int x, int y, int z) const
-  {
-    return x + (y * size_.x()) + (z * size_.x() * size_.y());
-  }
-
-  int Sub2Ind(const Eigen::Vector3i& sub) const
-  {
-    // MY_ASSERT(InRange(sub));
-    return Sub2Ind(sub.x(), sub.y(), sub.z());
-  }
-
-  Eigen::Vector3d Sub2Pos(int x, int y, int z) const
-  {
-    return Sub2Pos(Eigen::Vector3i(x, y, z));
-  }
-
-  Eigen::Vector3d Sub2Pos(const Eigen::Vector3i& sub) const
-  {
-    Eigen::Vector3d pos(0, 0, 0);
-    for (int i = 0; i < dimension_; i++)
+    void SetOrigin(const Eigen::Vector3d &origin)
     {
-      pos(i) = origin_(i) + sub(i) * resolution_(i) + resolution_(i) / 2;
+      origin_ = origin;
     }
-    return pos;
-  }
 
-  Eigen::Vector3d Ind2Pos(int ind) const
-  {
-    // MY_ASSERT(InRange(ind));
-    return Sub2Pos(Ind2Sub(ind));
-  }
-
-  Eigen::Vector3i Pos2Sub(double x, double y, double z) const
-  {
-    return Pos2Sub(Eigen::Vector3d(x, y, z));
-  }
-
-  Eigen::Vector3i Pos2Sub(const Eigen::Vector3d& pos) const
-  {
-    Eigen::Vector3i sub(0, 0, 0);
-    for (int i = 0; i < dimension_; i++)
+    void SetResolution(const Eigen::Vector3d &resolution)
     {
-      sub(i) = pos(i) - origin_(i) > 0 ? static_cast<int>((pos(i) - origin_(i)) * resolution_inv_(i)) : -1;
+      resolution_ = resolution;
+      for (int i = 0; i < dimension_; i++)
+      {
+        resolution_inv_(i) = 1.0 / resolution(i);
+      }
     }
-    return sub;
-  }
 
-  int Pos2Ind(const Eigen::Vector3d& pos) const
-  {
-    return Sub2Ind(Pos2Sub(pos));
-  }
+    Eigen::Vector3d GetResolution() const
+    {
+      return resolution_;
+    }
 
-  _T& GetCell(int x, int y, int z)
-  {
-    return GetCell(Eigen::Vector3i(x, y, z));
-  }
+    Eigen::Vector3d GetResolutionInv() const
+    {
+      return resolution_inv_;
+    }
 
-  _T& GetCell(const Eigen::Vector3i& sub)
-  {
-    // MY_ASSERT(InRange(sub));
-    int index = Sub2Ind(sub);
-    return cells_[index];
-  }
+    bool InRange(int x, int y, int z) const
+    {
+      return InRange(Eigen::Vector3i(x, y, z));
+    }
 
-  _T& GetCell(int index)
-  {
-    // MY_ASSERT(InRange(index));
-    return cells_[index];
-  }
+    bool InRange(const Eigen::Vector3i &sub) const
+    {
+      bool in_range = true;
+      for (int i = 0; i < dimension_; i++)
+      {
+        in_range &= sub(i) >= 0 && sub(i) < size_(i);
+      }
+      return in_range;
+    }
 
-  _T GetCellValue(int x, int y, int z) const
-  {
-    int index = Sub2Ind(x, y, z);
-    return cells_[index];
-  }
+    bool InRange(int ind) const
+    {
+      return ind >= 0 && ind < cell_number_;
+    }
 
-  _T GetCellValue(const Eigen::Vector3i& sub) const
-  {
-    // MY_ASSERT(InRange(sub));
-    return GetCellValue(sub.x(), sub.y(), sub.z());
-  }
+    Eigen::Vector3i Ind2Sub(int ind) const
+    {
+      // MY_ASSERT(InRange(ind));
+      return subs_[ind];
+    }
 
-  _T GetCellValue(int index) const
-  {
-    // MY_ASSERT(InRange(index));
-    return cells_[index];
-  }
+    int Sub2Ind(int x, int y, int z) const
+    {
+      return x + (y * size_.x()) + (z * size_.x() * size_.y());
+    }
 
-  void SetCellValue(int x, int y, int z, _T value)
-  {
-    int index = Sub2Ind(x, y, z);
-    cells_[index] = value;
-  }
+    int Sub2Ind(const Eigen::Vector3i &sub) const
+    {
+      // MY_ASSERT(InRange(sub));
+      return Sub2Ind(sub.x(), sub.y(), sub.z());
+    }
 
-  void SetCellValue(const Eigen::Vector3i& sub, _T value)
-  {
-    // MY_ASSERT(InRange(sub));
-    SetCellValue(sub.x(), sub.y(), sub.z(), value);
-  }
+    Eigen::Vector3d Sub2Pos(int x, int y, int z) const
+    {
+      return Sub2Pos(Eigen::Vector3i(x, y, z));
+    }
 
-  void SetCellValue(int index, const _T& value)
-  {
-    // MY_ASSERT(InRange(index));
-    cells_[index] = value;
-  }
+    Eigen::Vector3d Sub2Pos(const Eigen::Vector3i &sub) const
+    {
+      Eigen::Vector3d pos(0, 0, 0);
+      for (int i = 0; i < dimension_; i++)
+      {
+        pos(i) = origin_(i) + sub(i) * resolution_(i) + resolution_(i) / 2;
+      }
+      return pos;
+    }
 
-private:
-  Eigen::Vector3d origin_;
-  Eigen::Vector3i size_;
-  Eigen::Vector3d resolution_;
-  Eigen::Vector3d resolution_inv_;
-  std::vector<_T> cells_;
-  std::vector<Eigen::Vector3i> subs_;
-  int cell_number_;
-  int dimension_;
+    Eigen::Vector3d Ind2Pos(int ind) const
+    {
+      // MY_ASSERT(InRange(ind));
+      return Sub2Pos(Ind2Sub(ind));
+    }
 
-  Eigen::Vector3i ind2sub_(int ind) const
-  {
-    // MY_ASSERT(InRange(ind));
-    Eigen::Vector3i sub;
-    sub.z() = ind / (size_.x() * size_.y());
-    ind -= (sub.z() * size_.x() * size_.y());
-    sub.y() = ind / size_.x();
-    sub.x() = ind % size_.x();
-    return sub;
-  }
-};
-}  // namespace grid_ns
+    Eigen::Vector3i Pos2Sub(double x, double y, double z) const
+    {
+      return Pos2Sub(Eigen::Vector3d(x, y, z));
+    }
+
+    Eigen::Vector3i Pos2Sub(const Eigen::Vector3d &pos) const
+    {
+      Eigen::Vector3i sub(0, 0, 0);
+      for (int i = 0; i < dimension_; i++)
+      {
+        sub(i) = pos(i) - origin_(i) > 0 ? static_cast<int>((pos(i) - origin_(i)) * resolution_inv_(i)) : -1;
+      }
+      return sub;
+    }
+
+    int Pos2Ind(const Eigen::Vector3d &pos) const
+    {
+      return Sub2Ind(Pos2Sub(pos));
+    }
+
+    _T &GetCell(int x, int y, int z)
+    {
+      return GetCell(Eigen::Vector3i(x, y, z));
+    }
+
+    _T &GetCell(const Eigen::Vector3i &sub)
+    {
+      // MY_ASSERT(InRange(sub));
+      int index = Sub2Ind(sub);
+      return cells_[index];
+    }
+
+    _T &GetCell(int index)
+    {
+      // MY_ASSERT(InRange(index));
+      return cells_[index];
+    }
+
+    _T GetCellValue(int x, int y, int z) const
+    {
+      int index = Sub2Ind(x, y, z);
+      return cells_[index];
+    }
+
+    _T GetCellValue(const Eigen::Vector3i &sub) const
+    {
+      // MY_ASSERT(InRange(sub));
+      return GetCellValue(sub.x(), sub.y(), sub.z());
+    }
+
+    _T GetCellValue(int index) const
+    {
+      // MY_ASSERT(InRange(index));
+      return cells_[index];
+    }
+
+    void SetCellValue(int x, int y, int z, _T value)
+    {
+      int index = Sub2Ind(x, y, z);
+      cells_[index] = value;
+    }
+
+    void SetCellValue(const Eigen::Vector3i &sub, _T value)
+    {
+      // MY_ASSERT(InRange(sub));
+      SetCellValue(sub.x(), sub.y(), sub.z(), value);
+    }
+
+    void SetCellValue(int index, const _T &value)
+    {
+      // MY_ASSERT(InRange(index));
+      cells_[index] = value;
+    }
+
+  private:
+    Eigen::Vector3d origin_;            // 表示当前体素网格的起点
+    Eigen::Vector3i size_;              // 表示当前体素网格x，y，z的大小
+    Eigen::Vector3d resolution_;        // 表示当前体素网格x，y，z的分辨率
+    Eigen::Vector3d resolution_inv_;    // 表示当前体素网格x，y，z的分辨率的倒数，相当于一个1m体素网格的数量
+    std::vector<_T> cells_;             // 每个体素网格的内容
+    std::vector<Eigen::Vector3i> subs_; // 每个体素网格的序号
+    int cell_number_;                   // 表示当前体素网格的个数
+    int dimension_;                     // 表示体素网格的维度，默认为三维，dimension_ = 3;
+
+    Eigen::Vector3i ind2sub_(int ind) const
+    {
+      // MY_ASSERT(InRange(ind));
+      Eigen::Vector3i sub;
+      sub.z() = ind / (size_.x() * size_.y());
+      ind -= (sub.z() * size_.x() * size_.y());
+      sub.y() = ind / size_.x();
+      sub.x() = ind % size_.x();
+      return sub;
+    }
+  };
+} // namespace grid_ns

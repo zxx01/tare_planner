@@ -34,16 +34,16 @@
 
 namespace viewpoint_manager_ns
 {
-class ViewPointManager;
+  class ViewPointManager;
 }
 
 namespace planning_env_ns
 {
-typedef pcl::PointXYZRGBNormal PlannerCloudPointType;
-typedef pcl::PointCloud<PlannerCloudPointType> PlannerCloudType;
-struct PlanningEnvParameters;
-class PlanningEnv;
-}  // namespace planning_env_ns
+  typedef pcl::PointXYZRGBNormal PlannerCloudPointType;
+  typedef pcl::PointCloud<PlannerCloudPointType> PlannerCloudType;
+  struct PlanningEnvParameters;
+  class PlanningEnv;
+} // namespace planning_env_ns
 
 struct planning_env_ns::PlanningEnvParameters
 {
@@ -74,7 +74,7 @@ struct planning_env_ns::PlanningEnvParameters
   bool kUseCoverageBoundaryOnFrontier;
   bool kUseCoverageBoundaryOnObjectSurface;
 
-  void ReadParameters(ros::NodeHandle& nh);
+  void ReadParameters(ros::NodeHandle &nh);
 };
 
 class planning_env_ns::PlanningEnv
@@ -90,21 +90,39 @@ public:
   {
     parameters_.kUseFrontier = use_frontier;
   }
+
+  /**
+   * @brief
+   *
+   * @param robot_position
+   */
   void UpdateRobotPosition(geometry_msgs::Point robot_position)
   {
+    // 更新点云管理器中的机器人位置，并检查是否有新的邻居单元格
     bool pointcloud_manager_rolling = pointcloud_manager_->UpdateRobotPosition(robot_position);
+    // 获取当前pointcloud_grid_的原点位置
     Eigen::Vector3d pointcloud_manager_neighbor_cells_origin = pointcloud_manager_->GetNeighborCellsOrigin();
+
+    // 初始化rolling_occupancy_grid_的原点
     rolling_occupancy_grid_->InitializeOrigin(pointcloud_manager_neighbor_cells_origin);
+
+    // 更新滚动占据网格的机器人位置，更新rolling_occupancy_grid_的状态并执行相应的滚动更新操作，
+    // 滚出的栅格会变成点云存储，栅格状态由点云的intensity属性存储，并获取rolling_occupancy_grid_是否进行了滚动更新
     bool occupancy_grid_rolling = rolling_occupancy_grid_->UpdateRobotPosition(
         Eigen::Vector3d(robot_position.x, robot_position.y, robot_position.z));
+
+    // 滚动更新pointcloud_manager
     if (pointcloud_manager_rolling)
     {
       // Update rolling occupancy grid
       rolled_in_occupancy_cloud_->cloud_ = pointcloud_manager_->GetRolledInOccupancyCloud();
       pointcloud_manager_->ClearNeighborCellOccupancyCloud();
       // rolled_in_occupancy_cloud_->Publish();
+      // 滚入的时候再从之前滚出得栅格变成的点云再次变成栅格，并恢复栅格状态。
       rolling_occupancy_grid_->UpdateOccupancyStatus(rolled_in_occupancy_cloud_->cloud_);
     }
+
+    // 滚动更新occupancy_grid
     if (occupancy_grid_rolling)
     {
       // Store and retrieve occupancy cloud
@@ -125,8 +143,15 @@ public:
     }
     robot_position_update_ = true;
   }
+
+  /**
+   * @brief 根据传入的cloud更新rolling_occupancy_grid_的栅格状态
+   *
+   * @tparam PCLPointType
+   * @param cloud 传入的点云数据
+   */
   template <class PCLPointType>
-  void UpdateRegisteredCloud(typename pcl::PointCloud<PCLPointType>::Ptr& cloud)
+  void UpdateRegisteredCloud(typename pcl::PointCloud<PCLPointType>::Ptr &cloud)
   {
     if (cloud->points.empty())
     {
@@ -146,7 +171,7 @@ public:
   }
 
   template <class PCLPointType>
-  void UpdateKeyposeCloud(typename pcl::PointCloud<PCLPointType>::Ptr& keypose_cloud)
+  void UpdateKeyposeCloud(typename pcl::PointCloud<PCLPointType>::Ptr &keypose_cloud)
   {
     if (keypose_cloud->points.empty())
     {
@@ -157,6 +182,7 @@ public:
     {
       pcl::copyPointCloud<PCLPointType, PlannerCloudPointType>(*keypose_cloud, *(keypose_cloud_->cloud_));
 
+      // 对关键特征点云进行范围滤波，只保留范围内的point
       if (parameters_.kUseCoverageBoundaryOnObjectSurface)
       {
         GetCoverageCloudWithinBoundary<PlannerCloudPointType>(keypose_cloud_->cloud_);
@@ -167,36 +193,41 @@ public:
       get_surface_timer.Start();
       vertical_surface_cloud_->cloud_->clear();
 
+      // 提取竖直面点云->vertical_surface_cloud_->cloud_
       vertical_surface_extractor_.ExtractVerticalSurface<PlannerCloudPointType, PlannerCloudPointType>(
           keypose_cloud_->cloud_, vertical_surface_cloud_->cloud_);
       // vertical_surface_cloud_->Publish();
 
+      // 将pointcloud_grid_中所有点的红色通道值设置为255
       pointcloud_manager_->UpdateOldCloudPoints();
+      // 将输入点云更新到pointcloud_grid_中，并对每个单元格中的点云数据应用VoxelGrid滤波器进行下采样。
       pointcloud_manager_->UpdatePointCloud<PlannerCloudPointType>(*(vertical_surface_cloud_->cloud_));
+      // 更新pointcloud_grid_中的点云数据，将所有被覆盖的点的绿色通道（G通道）值设为255。
       pointcloud_manager_->UpdateCoveredCloudPoints();
 
+      // 将pointcloud_grid_中所有当前位置的邻近单元格中的点云数据合并到输出点云*(planner_cloud_->cloud_)中
       planner_cloud_->cloud_->clear();
       pointcloud_manager_->GetPointCloud(*(planner_cloud_->cloud_));
       planner_cloud_->Publish();
 
-      // Get the diff cloud
+      // Get the diff cloud--存在于keypose_cloud_，而不在stacked_cloud_的point
       diff_cloud_->cloud_->clear();
-      for (auto& point : keypose_cloud_->cloud_->points)
+      for (auto &point : keypose_cloud_->cloud_->points) // keypose_cloud_->cloud_的RGB通道全部设置为0
       {
         point.r = 0;
         point.g = 0;
         point.b = 0;
       }
-      for (auto& point : stacked_cloud_->cloud_->points)
+      for (auto &point : stacked_cloud_->cloud_->points) // stacked_cloud_->cloud_的R通道设置为255
       {
         point.r = 255;
       }
-      *(stacked_cloud_->cloud_) += *(keypose_cloud_->cloud_);
+      *(stacked_cloud_->cloud_) += *(keypose_cloud_->cloud_); // 将keypose_cloud_并入stacked_cloud_
       stacked_cloud_downsizer_.Downsize(stacked_cloud_->cloud_, parameters_.kSurfaceCloudDwzLeafSize,
-                                        parameters_.kSurfaceCloudDwzLeafSize, parameters_.kSurfaceCloudDwzLeafSize);
-      for (const auto& point : stacked_cloud_->cloud_->points)
+                                        parameters_.kSurfaceCloudDwzLeafSize, parameters_.kSurfaceCloudDwzLeafSize); // 对stacked_cloud_下采样
+      for (const auto &point : stacked_cloud_->cloud_->points)                                                       // 找diff cloud
       {
-        if (point.r < 40)  // TODO: computed from the keypose cloud resolution and stacked cloud resolution
+        if (point.r < 40) // TODO: computed from the keypose cloud resolution and stacked cloud resolution
         {
           diff_cloud_->cloud_->points.push_back(point);
         }
@@ -204,10 +235,13 @@ public:
       diff_cloud_->Publish();
       get_surface_timer.Stop(false);
 
-      // Stack together
+      // Stack keypose_cloud_
+      // 实现了一个循环缓冲区的功能，用于存储一系列keypose_cloud_点云数据
       keypose_cloud_stack_[keypose_cloud_count_]->clear();
       *keypose_cloud_stack_[keypose_cloud_count_] = *keypose_cloud_->cloud_;
       keypose_cloud_count_ = (keypose_cloud_count_ + 1) % parameters_.kKeyposeCloudStackNum;
+
+      // 循环缓冲区中的所有keypose_cloud_点云数据叠加到存储叠加点云数据的容器中，获取一段时间内的点云数据总和，接着进行下采样。
       stacked_cloud_->cloud_->clear();
       for (int i = 0; i < parameters_.kKeyposeCloudStackNum; i++)
       {
@@ -216,15 +250,16 @@ public:
       stacked_cloud_downsizer_.Downsize(stacked_cloud_->cloud_, parameters_.kSurfaceCloudDwzLeafSize,
                                         parameters_.kSurfaceCloudDwzLeafSize, parameters_.kSurfaceCloudDwzLeafSize);
 
+      // Stack vertical_surface_cloud_
       vertical_surface_cloud_stack_[keypose_cloud_count_]->clear();
       *vertical_surface_cloud_stack_[keypose_cloud_count_] = *(vertical_surface_cloud_->cloud_);
       keypose_cloud_count_ = (keypose_cloud_count_ + 1) % parameters_.kKeyposeCloudStackNum;
+
       stacked_vertical_surface_cloud_->cloud_->clear();
       for (int i = 0; i < parameters_.kKeyposeCloudStackNum; i++)
       {
         *(stacked_vertical_surface_cloud_->cloud_) += *vertical_surface_cloud_stack_[i];
       }
-
       stacked_cloud_downsizer_.Downsize(stacked_vertical_surface_cloud_->cloud_, parameters_.kSurfaceCloudDwzLeafSize,
                                         parameters_.kSurfaceCloudDwzLeafSize, parameters_.kSurfaceCloudDwzLeafSize);
 
@@ -233,18 +268,27 @@ public:
         stacked_vertical_surface_cloud_kdtree_->setInputCloud(stacked_vertical_surface_cloud_->cloud_);
       }
 
+      // 将vertical_surface_cloud_stack_的点云数据并入collision_cloud_并进行下采样
       UpdateCollisionCloud();
 
+      // 更新Frontier
       UpdateFrontiers();
     }
   }
-  inline void UpdateCoverageBoundary(const geometry_msgs::Polygon& polygon)
+
+  inline void UpdateCoverageBoundary(const geometry_msgs::Polygon &polygon)
   {
     coverage_boundary_ = polygon;
   }
 
+  /**
+   * @brief Get the Coverage Cloud Within Boundary object 从给定的点云中提取位于指定边界内的点云数据。
+   *
+   * @tparam PCLPointType
+   * @param cloud
+   */
   template <class PCLPointType>
-  void GetCoverageCloudWithinBoundary(typename pcl::PointCloud<PCLPointType>::Ptr& cloud)
+  void GetCoverageCloudWithinBoundary(typename pcl::PointCloud<PCLPointType>::Ptr &cloud)
   {
     if (cloud->points.empty())
     {
@@ -278,7 +322,7 @@ public:
     return stacked_cloud_->cloud_;
   }
 
-  void UpdateTerrainCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud);
+  void UpdateTerrainCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr &cloud);
   void UpdateCollisionCostGrid();
   bool InCollision(double x, double y, double z) const;
 
@@ -290,11 +334,11 @@ public:
   {
     return planner_cloud_->cloud_;
   }
-  void UpdateCoveredArea(const lidar_model_ns::LiDARModel& robot_viewpoint,
-                         const std::shared_ptr<viewpoint_manager_ns::ViewPointManager>& viewpoint_manager);
+  void UpdateCoveredArea(const lidar_model_ns::LiDARModel &robot_viewpoint,
+                         const std::shared_ptr<viewpoint_manager_ns::ViewPointManager> &viewpoint_manager);
 
-  void GetUncoveredArea(const std::shared_ptr<viewpoint_manager_ns::ViewPointManager>& viewpoint_manager,
-                        int& uncovered_point_num, int& uncovered_frontier_point_num);
+  void GetUncoveredArea(const std::shared_ptr<viewpoint_manager_ns::ViewPointManager> &viewpoint_manager,
+                        int &uncovered_point_num, int &uncovered_frontier_point_num);
 
   Eigen::Vector3d GetPointCloudManagerNeighborCellsOrigin()
   {
