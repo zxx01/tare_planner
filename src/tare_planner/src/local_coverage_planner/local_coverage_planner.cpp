@@ -827,7 +827,7 @@ namespace local_coverage_planner_ns
     }
 
     /*
-    3.统计 pre_selected_viewpoint_array_indices 中所有的视点能看到的 point 和 frontier, 将能看到的都设为true
+    3.统计 pre_selected_viewpoint_array_indices 中所有的视点能看到的 point 和 frontier, 将能看到的都设为 true
     */
     // Update coverage
     for (auto &viewpoint_array_ind : pre_selected_viewpoint_array_indices)

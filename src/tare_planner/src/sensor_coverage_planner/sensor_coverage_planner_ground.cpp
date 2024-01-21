@@ -559,7 +559,7 @@ namespace sensor_coverage_planner_3d_ns
   }
 
   /**
-   * @brief 更新覆盖区域信息，获取未覆盖的区域信息
+   * @brief 更新已覆盖区域信息，获取未覆盖的区域信息
    *
    * @param uncovered_point_num
    * @param uncovered_frontier_point_num
@@ -692,7 +692,7 @@ namespace sensor_coverage_planner_3d_ns
     pd_.grid_world_->AddPathsInBetweenCells(pd_.viewpoint_manager_, pd_.keypose_graph_);
     // 更新候选视点的in_exploring_cell_属性
     pd_.viewpoint_manager_->UpdateCandidateViewPointCellStatus(pd_.grid_world_);
-
+    // 全局规划
     global_path = pd_.grid_world_->SolveGlobalTSP(pd_.viewpoint_manager_, global_cell_tsp_order, pd_.keypose_graph_);
 
     global_tsp_timer.Stop(false);
@@ -873,11 +873,11 @@ namespace sensor_coverage_planner_3d_ns
   }
 
   /**
-   * @brief 用于获取前瞻点，用于路径规划过程中的方向控制
+   * @brief 基于机器人或传感器的当前位置和路径信息，确定一个前瞻点。
    *
-   * @param local_path
-   * @param global_path
-   * @param lookahead_point
+   * @param local_path 实际上传的是拼接路径
+   * @param global_path 全局路径
+   * @param lookahead_point 存储计算出的前瞻点
    * @return true
    * @return false
    */
@@ -888,6 +888,7 @@ namespace sensor_coverage_planner_3d_ns
     Eigen::Vector3d robot_position(pd_.robot_position_.x, pd_.robot_position_.y, pd_.robot_position_.z);
 
     // Determine which direction to follow on the global path
+    // 1.最近的路径点到全局路径的起始点和和终止点的长度计算:dist_from_start, dist_from_end
     double dist_from_start = 0.0;
     for (int i = 1; i < global_path.nodes_.size(); i++)
     {
@@ -908,6 +909,7 @@ namespace sensor_coverage_planner_3d_ns
       }
     }
 
+    // 2.检查局部路径是否过短: local_path_too_short
     bool local_path_too_short = true;
     for (int i = 0; i < local_path.nodes_.size(); i++)
     {
@@ -918,6 +920,8 @@ namespace sensor_coverage_planner_3d_ns
         break;
       }
     }
+
+    // 3.1全局前瞻点选择: 如果局部路径太短或少于一个节点，函数将基于全局路径的起始点和终点距离计算前瞻点: lookahead_point
     if (local_path.GetNodeNum() < 1 || local_path_too_short)
     {
       if (dist_from_start < dist_from_end)
@@ -949,6 +953,8 @@ namespace sensor_coverage_planner_3d_ns
       return false;
     }
 
+    // 3.2局部前瞻点选择
+    // 确定has_lookahead, robot_i, lookahead_i
     bool has_lookahead = false;
     bool dir = true;
     int robot_i = 0;
@@ -966,6 +972,7 @@ namespace sensor_coverage_planner_3d_ns
       }
     }
 
+    // 确定是否存在local_loop, 前向和后向局部视点计数:forward_viewpoint_count,backward_viewpoint_count
     int forward_viewpoint_count = 0;
     int backward_viewpoint_count = 0;
 
@@ -999,6 +1006,7 @@ namespace sensor_coverage_planner_3d_ns
       }
     }
 
+    // 根据局部路径和可视性（视线）确定前向和后向前瞻点:forward_lookahead_point,backward_lookahead_point
     Eigen::Vector3d forward_lookahead_point = robot_position;
     Eigen::Vector3d backward_lookahead_point = robot_position;
 
@@ -1104,6 +1112,7 @@ namespace sensor_coverage_planner_3d_ns
     double backward_angle_score = -2;
     double lookahead_angle_score = -2;
 
+    // 角度评分:为前向、后向和当前前瞻点计算角度分数，以确定最佳前瞻方向。
     double dist_robot_to_lookahead = 0.0;
     if (has_forward)
     {
@@ -1129,6 +1138,7 @@ namespace sensor_coverage_planner_3d_ns
       lookahead_angle_score = dx * diff.x() + dy * diff.y();
     }
 
+    // 重新定位和前瞻点选择
     pd_.lookahead_point_cloud_->cloud_->clear();
 
     if (forward_viewpoint_count == 0 && backward_viewpoint_count == 0)
@@ -1452,6 +1462,7 @@ namespace sensor_coverage_planner_3d_ns
       near_home_ = GetRobotToHomeDistance() < pp_.kRushHomeDist;
       at_home_ = GetRobotToHomeDistance() < pp_.kAtHomeDistThreshold;
 
+      // 判定是否探索完成
       if (pd_.grid_world_->IsReturningHome() && pd_.local_coverage_planner_->IsLocalCoverageComplete() &&
           (ros::Time::now() - start_time_).toSec() > 5)
       {
@@ -1462,6 +1473,7 @@ namespace sensor_coverage_planner_3d_ns
         exploration_finished_ = true;
       }
 
+      // 判定是否停止移动
       if (exploration_finished_ && at_home_ && !stopped_)
       {
         PrintExplorationStatus("Return home completed", false);
@@ -1473,6 +1485,7 @@ namespace sensor_coverage_planner_3d_ns
 
       PublishExplorationState();
 
+      // 获取 LookAheadPoint
       lookahead_point_update_ = GetLookAheadPoint(pd_.exploration_path_, global_path, pd_.lookahead_point_);
       PublishWaypoint();
 
